@@ -1,6 +1,6 @@
 # RepoXray
 
-> See how a JavaScript/TypeScript codebase fits together — paste a public GitHub URL, get an interactive map of files and their imports.
+> **Paste any public GitHub URL and see exactly how its JS/TS files import each other. No install, no AI guesswork.**
 
 **Status:** v1 in development · 30-day build-in-public challenge (19 Oct – 17 Nov 2026)
 
@@ -15,6 +15,20 @@
 That's it. v1 does one thing well: turns "where does this file get used?" into a picture.
 
 **Stack:** React + Vite + TypeScript, React Flow, runs entirely in the browser. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow, limits and design decisions.
+
+---
+
+## How RepoXray compares
+
+| Tool | Install needed? | Level | Visual? | Price |
+|---|---|---|---|---|
+| [Madge](https://github.com/pahen/madge) | Yes: npm CLI, plus Graphviz for images, run on a local clone | File | Static image (SVG/PNG) | Free (MIT) |
+| [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) | Yes: npm CLI + config, run on a local clone | File | Generates dot/Mermaid/HTML you then render | Free (MIT) |
+| [GitDiagram](https://gitdiagram.com) | No: paste a URL | Folder/component, AI-generated | Interactive Mermaid diagram | Free (MIT) |
+| [GitHub dependency graph](https://docs.github.com/en/code-security/concepts/supply-chain-security/about-the-dependency-graph) | No: built into public repos | Package (from `package.json`/lock files) | Searchable list, not a graph | Free |
+| [Sourcegraph](https://sourcegraph.com/search) | No for public search; self-host/Enterprise for teams | Symbol/text (search, find references) | Search results, no file graph | Public search free; Enterprise only for teams |
+
+**Where RepoXray fits:** the only one that is zero-install *and* file-level *and* an interactive graph. Every edge comes from parsing real import statements, so nothing is guessed.
 
 ---
 
