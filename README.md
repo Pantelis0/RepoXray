@@ -115,6 +115,8 @@ v1 ships when **all** of these pass:
 
 ## Issue backlog
 
+**Live tracking:** the v1 work is in [GitHub Issues](https://github.com/Pantelis0/RepoXray/issues) (#1–#10, grouped into weekly [milestones](https://github.com/Pantelis0/RepoXray/milestones)), each with success criteria. The list below is the original planning backlog; its numbers are planning IDs, not issue numbers.
+
 Labels: `v1` (must ship), `stretch`, `post-v1`.
 
 ### v1 — Setup
