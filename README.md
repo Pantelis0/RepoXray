@@ -14,6 +14,8 @@
 
 That's it. v1 does one thing well: turns "where does this file get used?" into a picture.
 
+**Stack:** React + Vite + TypeScript, React Flow, runs entirely in the browser. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the data flow, limits and design decisions.
+
 ---
 
 ## Scope
