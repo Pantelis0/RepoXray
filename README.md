@@ -181,7 +181,7 @@ Labels: `v1` (must ship), `stretch`, `post-v1`.
 
 ## Getting started
 
-Requires **Node.js 20.19+** (22 recommended).
+Requires **Node.js 20.19+** (22 recommended; `.nvmrc` pins 22 if you use nvm: run `nvm use`).
 
 ```bash
 git clone https://github.com/Pantelis0/RepoXray.git
@@ -204,6 +204,18 @@ Right now the home screen shows a **sample graph** (hand-written data of RepoXra
 | `npm run check`                   | Everything CI runs except the build     |
 
 CI runs typecheck, lint, format check, tests and build on every push and pull request.
+
+### Verify your setup
+
+From a fresh clone, this should finish with no errors and leave `git status` clean:
+
+```bash
+npm ci             # clean install exactly from package-lock.json
+npm run check      # typecheck + lint + format check + tests
+npm run build      # production build to dist/
+```
+
+If `npm run check` fails only on formatting, run `npm run format` and commit the result.
 
 ## Contributing
 
