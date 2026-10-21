@@ -36,9 +36,19 @@ export default function App() {
           <span className="brand__name">RepoXray</span>
           <span className="brand__badge">pre-alpha</span>
         </div>
-        <a className="app-header__link" href="https://github.com/Pantelis0/RepoXray">
-          GitHub
-        </a>
+        <nav className="app-header__nav" aria-label="Links">
+          <a className="app-header__link" href="https://github.com/Pantelis0/RepoXray">
+            GitHub
+          </a>
+          <a
+            className="waitlist-link"
+            href="https://tally.so/r/1WAKM4"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Join the waitlist
+          </a>
+        </nav>
       </header>
 
       <section className="hero">
@@ -48,6 +58,13 @@ export default function App() {
           guesswork.
         </p>
         <UrlForm onSubmit={handleSubmit} />
+        <p className="hero__waitlist">
+          Want early access when it ships (target 17 Nov)?{' '}
+          <a href="https://tally.so/r/1WAKM4" target="_blank" rel="noopener noreferrer">
+            Join the waitlist
+          </a>
+          .
+        </p>
         {notice && (
           <p className="notice" role="status">
             {notice}
