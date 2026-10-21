@@ -4,6 +4,8 @@
 
 **Status:** v1 in development · 30-day build-in-public challenge (19 Oct – 17 Nov 2026)
 
+**[→ Join the waitlist](https://tally.so/r/1WAKM4)** for early access when v1 ships · follow the build on [X @pntlsk](https://x.com/pntlsk)
+
 ---
 
 ## What it does (v1)
