@@ -1,13 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { GraphView } from './components/GraphView';
 import { UrlForm } from './components/UrlForm';
 import { folderColors } from './lib/folderColors';
+import { fetchRepoMeta, type RepoMeta } from './lib/github';
+import { formatRepoRef, type RepoRef } from './lib/parseRepoUrl';
 import { sampleGraph } from './lib/sampleGraph';
+
+type CheckStatus =
+  | { kind: 'idle' }
+  | { kind: 'checking'; ref: RepoRef }
+  | { kind: 'found'; meta: RepoMeta; branch: string }
+  | { kind: 'error'; ref: RepoRef; message: string };
 
 export default function App() {
   const graph = sampleGraph;
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [status, setStatus] = useState<CheckStatus>({ kind: 'idle' });
+  const inFlight = useRef<AbortController | null>(null);
+
+  useEffect(() => () => inFlight.current?.abort(), []);
 
   const colors = useMemo(() => folderColors(graph.nodes.map((n) => n.folder)), [graph]);
 
@@ -19,13 +30,21 @@ export default function App() {
     };
   }, [graph, selectedId]);
 
-  function handleSubmit(url: string) {
-    // Real analysis lands in issues #2–#8. Until then, be honest about it.
-    setNotice(
-      url
-        ? `Repo analysis isn't built yet, so "${url}" wasn't fetched. Below is a sample graph.`
-        : 'Paste a public GitHub repo URL. (Analysis isn’t built yet; below is a sample graph.)',
-    );
+  async function handleAnalyse(ref: RepoRef) {
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+    setStatus({ kind: 'checking', ref });
+
+    const result = await fetchRepoMeta(ref, { signal: controller.signal });
+    if (controller.signal.aborted) return;
+    inFlight.current = null;
+
+    if (result.ok) {
+      setStatus({ kind: 'found', meta: result.value, branch: ref.ref ?? result.value.defaultBranch });
+    } else if (result.error.kind !== 'aborted') {
+      setStatus({ kind: 'error', ref, message: result.error.message });
+    }
   }
 
   return (
@@ -57,7 +76,12 @@ export default function App() {
           Paste any public GitHub URL and see exactly how its JS/TS files import each other. No install, no AI
           guesswork.
         </p>
-        <UrlForm onSubmit={handleSubmit} />
+        <UrlForm
+          busy={status.kind === 'checking'}
+          onAnalyse={handleAnalyse}
+          onEdit={() => setStatus((s) => (s.kind === 'checking' ? s : { kind: 'idle' }))}
+        />
+        <RepoStatus status={status} />
         <p className="hero__waitlist">
           Want early access when it ships (target 17 Nov)?{' '}
           <a href="https://tally.so/r/1WAKM4" target="_blank" rel="noopener noreferrer">
@@ -65,11 +89,6 @@ export default function App() {
           </a>
           .
         </p>
-        {notice && (
-          <p className="notice" role="status">
-            {notice}
-          </p>
-        )}
       </section>
 
       <section className="canvas-card" aria-label="Import graph">
@@ -111,6 +130,35 @@ export default function App() {
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function RepoStatus({ status }: { status: CheckStatus }) {
+  // Kept mounted so screen readers announce each change.
+  return (
+    <div className="repo-status" aria-live="polite">
+      {status.kind === 'checking' && (
+        <p className="status status--checking">
+          <span className="spinner" aria-hidden="true" /> Checking <code>{formatRepoRef(status.ref)}</code> on
+          GitHub…
+        </p>
+      )}
+      {status.kind === 'found' && (
+        <p className="status status--found">
+          Found{' '}
+          <a href={status.meta.htmlUrl} target="_blank" rel="noopener noreferrer">
+            {status.meta.owner}/{status.meta.repo}
+          </a>{' '}
+          (branch: <code>{status.branch}</code>). Import analysis is next, so the graph below is still sample
+          data.
+        </p>
+      )}
+      {status.kind === 'error' && (
+        <p className="status status--error" role="alert">
+          <code>{formatRepoRef(status.ref)}</code>: {status.message}
+        </p>
+      )}
     </div>
   );
 }

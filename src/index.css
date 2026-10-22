@@ -9,6 +9,7 @@
   --accent: #5eead4;
   --imports: #5eead4;
   --imported-by: #f2b36b;
+  --error: #fca5a5;
   --radius: 12px;
   --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -142,13 +143,16 @@ a {
 }
 
 .url-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
   max-width: 640px;
 }
 
-.url-form input {
+.url-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.url-form__row input {
   flex: 1 1 320px;
   min-width: 0;
   height: 48px;
@@ -160,12 +164,12 @@ a {
   font: 16px var(--font-mono);
 }
 
-.url-form input:focus-visible {
+.url-form__row input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.url-form button {
+.url-form__row button {
   height: 48px;
   padding: 0 22px;
   border: 0;
@@ -174,18 +178,107 @@ a {
   color: #04201b;
   font: 600 16px var(--font-sans);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.url-form button:focus-visible {
+.url-form__row button:disabled {
+  opacity: 0.75;
+  cursor: progress;
+}
+
+.url-form__row input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.url-form__row button:focus-visible {
   outline: 2px solid var(--fg);
   outline-offset: 2px;
 }
 
-.notice {
-  margin: 12px 0 0;
+.field-hint,
+.field-error {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.field-hint {
+  color: var(--fg-faint);
+}
+
+.field-hint code,
+.status code {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+}
+
+.field-error {
+  color: var(--error);
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.repo-status {
   max-width: 640px;
-  color: var(--imported-by);
+}
+
+.repo-status:empty {
+  display: none;
+}
+
+.status {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--panel);
   font-size: 15px;
+  line-height: 1.5;
+}
+
+.status--found {
+  border-color: rgb(94 234 212 / 0.4);
+}
+
+.status--error {
+  border-color: rgb(252 165 165 / 0.45);
+  color: var(--error);
+}
+
+.status--error code {
+  color: var(--error);
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Canvas card */
@@ -336,5 +429,9 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .file-node {
     transition: none;
+  }
+
+  .spinner {
+    animation-duration: 2.4s;
   }
 }
