@@ -1,0 +1,257 @@
+{
+  "sha": "9044ac4b2e4f3a4eb1d9f0fb8890c55d02c70e9f",
+  "tree": [
+    {
+      "mode": "040000",
+      "path": ".github",
+      "type": "tree"
+    },
+    {
+      "mode": "040000",
+      "path": ".github/workflows",
+      "type": "tree"
+    },
+    {
+      "mode": "100644",
+      "path": ".github/workflows/ci.yml",
+      "size": 614,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": ".gitignore",
+      "size": 253,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": ".nvmrc",
+      "size": 3,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": ".oxlintrc.json",
+      "size": 245,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": ".prettierignore",
+      "size": 36,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": ".prettierrc.json",
+      "size": 47,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "README.md",
+      "size": 13522,
+      "type": "blob"
+    },
+    {
+      "mode": "040000",
+      "path": "docs",
+      "type": "tree"
+    },
+    {
+      "mode": "100644",
+      "path": "docs/ARCHITECTURE.md",
+      "size": 14162,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "docs/GITHUB_LIMITS.md",
+      "size": 6297,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "docs/TEST_FIXTURES.md",
+      "size": 4276,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "index.html",
+      "size": 879,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "package-lock.json",
+      "size": 88277,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "package.json",
+      "size": 1069,
+      "type": "blob"
+    },
+    {
+      "mode": "040000",
+      "path": "public",
+      "type": "tree"
+    },
+    {
+      "mode": "100644",
+      "path": "public/favicon.svg",
+      "size": 508,
+      "type": "blob"
+    },
+    {
+      "mode": "040000",
+      "path": "src",
+      "type": "tree"
+    },
+    {
+      "mode": "100644",
+      "path": "src/App.test.tsx",
+      "size": 3368,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/App.tsx",
+      "size": 5972,
+      "type": "blob"
+    },
+    {
+      "mode": "040000",
+      "path": "src/components",
+      "type": "tree"
+    },
+    {
+      "mode": "100644",
+      "path": "src/components/FileNode.tsx",
+      "size": 1249,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/components/GraphView.tsx",
+      "size": 4011,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/components/UrlForm.test.tsx",
+      "size": 3071,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/components/UrlForm.tsx",
+      "size": 3603,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/index.css",
+      "size": 7362,
+      "type": "blob"
+    },
+    {
+      "mode": "040000",
+      "path": "src/lib",
+      "type": "tree"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/folderColors.ts",
+      "size": 674,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/github.test.ts",
+      "size": 6216,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/github.ts",
+      "size": 5368,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/layout.test.ts",
+      "size": 1295,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/layout.ts",
+      "size": 1944,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/parseRepoUrl.test.ts",
+      "size": 6067,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/parseRepoUrl.ts",
+      "size": 7202,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/sampleGraph.test.ts",
+      "size": 1450,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/sampleGraph.ts",
+      "size": 3070,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/lib/types.ts",
+      "size": 1198,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "src/main.tsx",
+      "size": 235,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "tsconfig.app.json",
+      "size": 675,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "tsconfig.json",
+      "size": 107,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "tsconfig.node.json",
+      "size": 558,
+      "type": "blob"
+    },
+    {
+      "mode": "100644",
+      "path": "vite.config.ts",
+      "size": 164,
+      "type": "blob"
+    }
+  ],
+  "truncated": false
+}
