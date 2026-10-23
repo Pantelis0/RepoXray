@@ -2,6 +2,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import realTree from './lib/__fixtures__/repoxray-tree.json';
 
 // React Flow needs real layout APIs; the canvas isn't what's under test here.
 vi.mock('./components/GraphView', () => ({ GraphView: () => <div data-testid="graph" /> }));
@@ -11,7 +12,25 @@ import App from './App';
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 
+const reactMeta = {
+  name: 'react',
+  owner: { login: 'react' },
+  default_branch: 'main',
+  description: 'The library for web and native user interfaces.',
+  stargazers_count: 241_000,
+  language: 'JavaScript',
+  archived: false,
+  fork: false,
+};
+
+type Route = (url: string) => Response | Promise<Response>;
 let fetchMock: ReturnType<typeof vi.fn>;
+const routes = (handlers: Record<string, Route>) =>
+  fetchMock.mockImplementation(async (input: string) => {
+    const url = String(input);
+    for (const [match, handler] of Object.entries(handlers)) if (url.includes(match)) return handler(url);
+    return json(500, { message: `unexpected ${url}` });
+  });
 
 beforeEach(() => {
   fetchMock = vi.fn();
@@ -28,35 +47,100 @@ async function analyse(text: string) {
   render(<App />);
   await user.type(screen.getByLabelText(/public github repository url/i), text);
   await user.click(screen.getByRole('button', { name: /analyse/i }));
+  return user;
 }
 
-describe('App repo check', () => {
-  it('shows loading, then the repo and its default branch', async () => {
-    let respond!: (r: Response) => void;
-    fetchMock.mockReturnValue(new Promise<Response>((r) => (respond = r)));
+describe('App repo analysis', () => {
+  it('checks the repo, reads the tree, then shows the header with file counts', async () => {
+    let releaseTree!: () => void;
+    routes({
+      '/git/trees/': () => new Promise<Response>((r) => (releaseTree = () => r(json(200, realTree)))),
+      '/repos/facebook/react': () => json(200, reactMeta),
+    });
 
     await analyse('facebook/react');
-    expect(await screen.findByText(/on GitHub…/)).toBeTruthy();
+    expect(await screen.findByText(/Reading the file tree/)).toBeTruthy();
     expect((screen.getByRole('button', { name: /checking/i }) as HTMLButtonElement).disabled).toBe(true);
 
-    respond(json(200, { name: 'react', owner: { login: 'facebook' }, default_branch: 'main' }));
-    expect(await screen.findByText(/Import analysis is next/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'facebook/react' }).getAttribute('href')).toBe(
-      'https://github.com/facebook/react',
+    releaseTree();
+    const header = await screen.findByRole('article', { name: /Repository react\/react/ });
+    expect(header.textContent).toContain('The library for web and native user interfaces.');
+    expect(header.textContent).toMatch(/241K/);
+    expect(header.textContent).toContain('JavaScript');
+    expect(header.textContent).toMatch(/36 files/);
+    expect(header.textContent).toMatch(/\d+ JS\/TS files/);
+    expect(header.textContent).toMatch(/now lives at react\/react/);
+    expect(screen.getByRole('link', { name: 'react/react' }).getAttribute('href')).toBe(
+      'https://github.com/react/react',
     );
-    expect(fetchMock).toHaveBeenCalledWith('https://api.github.com/repos/facebook/react', expect.anything());
+
+    // Exactly two GitHub calls, both on api.github.com, built from GitHub's canonical names.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.github.com/repos/facebook/react');
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      'https://api.github.com/repos/react/react/git/trees/main?recursive=1',
+    );
   });
 
-  it('shows "not found or not public" for a 404', async () => {
-    fetchMock.mockResolvedValue(json(404, { message: 'Not Found' }));
+  it('uses the branch from a /tree/<branch> link and explains when it does not exist', async () => {
+    routes({
+      '/git/trees/': () => json(404, { message: 'Not Found' }),
+      '/repos/honojs/hono': () => json(200, { ...reactMeta, name: 'hono', owner: { login: 'honojs' } }),
+    });
+    await analyse('https://github.com/honojs/hono/tree/does-not-exist');
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/no branch or tag called “does-not-exist” in honojs\/hono/);
+    expect(fetchMock.mock.calls[1][0]).toContain('/git/trees/does-not-exist?recursive=1');
+    // The header still shows, so you can see the repo itself was found.
+    expect(screen.getByRole('article', { name: /honojs\/hono/ })).toBeTruthy();
+  });
+
+  it('explains an empty repo', async () => {
+    routes({
+      '/git/trees/': () => json(409, { message: 'Git Repository is empty.' }),
+      '/repos/': () => json(200, { ...reactMeta, name: 'empty', owner: { login: 'me' } }),
+    });
+    await analyse('me/empty');
+    expect((await screen.findByRole('alert')).textContent).toMatch(/This repo is empty/);
+  });
+
+  it('explains a truncated tree as too large', async () => {
+    routes({
+      '/git/trees/': () => json(200, { ...realTree, truncated: true }),
+      '/repos/': () => json(200, reactMeta),
+    });
+    await analyse('facebook/react');
+    expect((await screen.findByRole('alert')).textContent).toMatch(/too large for v1/);
+  });
+
+  it('stops at the 2,000-file limit with the real count', async () => {
+    const tree = Array.from({ length: 2_345 }, (_, i) => ({
+      path: `src/f${i}.ts`,
+      type: 'blob',
+      mode: '100644',
+      size: 10,
+    }));
+    routes({
+      '/git/trees/': () => json(200, { sha: 'x', truncated: false, tree }),
+      '/repos/': () => json(200, reactMeta),
+    });
+    await analyse('facebook/react');
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'This repo has 2,345 JS/TS files; v1 supports up to 2,000.',
+    );
+  });
+
+  it('shows "not found or not public" for a 404 and never asks for the tree', async () => {
+    routes({ '/repos/': () => json(404, { message: 'Not Found' }) });
     await analyse('someone/private-thing');
     expect((await screen.findByRole('alert')).textContent).toMatch(/not found or not public/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('shows the rate-limit message', async () => {
-    fetchMock.mockResolvedValue(
-      json(403, {}, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1792500000' }),
-    );
+    routes({
+      '/repos/': () => json(403, {}, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1792500000' }),
+    });
     await analyse('facebook/react');
     expect((await screen.findByRole('alert')).textContent).toMatch(/hourly limit/i);
   });
@@ -68,14 +152,10 @@ describe('App repo check', () => {
   });
 
   it('clears an old result when the user starts typing another repo', async () => {
-    fetchMock.mockResolvedValue(json(404, { message: 'Not Found' }));
-    const user = userEvent.setup();
-    render(<App />);
-    const input = screen.getByLabelText(/public github repository url/i);
-    await user.type(input, 'someone/nope');
-    await user.click(screen.getByRole('button', { name: /analyse/i }));
+    routes({ '/repos/': () => json(404, { message: 'Not Found' }) });
+    const user = await analyse('someone/nope');
     expect(await screen.findByText(/not found or not public/i)).toBeTruthy();
-    await user.type(input, 'x');
+    await user.type(screen.getByLabelText(/public github repository url/i), 'x');
     expect(screen.queryByText(/not found or not public/i)).toBeNull();
   });
 });

@@ -1,16 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GraphView } from './components/GraphView';
+import { RepoHeader } from './components/RepoHeader';
 import { UrlForm } from './components/UrlForm';
+import { fileLimitMessage, filterTree, type TreeSummary } from './lib/filterTree';
 import { folderColors } from './lib/folderColors';
-import { fetchRepoMeta, type RepoMeta } from './lib/github';
+import { fetchRepoMeta, fetchRepoTree, type RepoMeta } from './lib/github';
 import { formatRepoRef, type RepoRef } from './lib/parseRepoUrl';
 import { sampleGraph } from './lib/sampleGraph';
 
 type CheckStatus =
   | { kind: 'idle' }
   | { kind: 'checking'; ref: RepoRef }
-  | { kind: 'found'; meta: RepoMeta; branch: string }
+  | { kind: 'reading-tree'; ref: RepoRef; meta: RepoMeta; branch: string }
+  | { kind: 'ready'; ref: RepoRef; meta: RepoMeta; branch: string; summary: TreeSummary }
+  /** The repo exists but can't be analysed (no branch, empty, too large…). */
+  | {
+      kind: 'repo-problem';
+      ref: RepoRef;
+      meta: RepoMeta;
+      branch: string;
+      message: string;
+      summary?: TreeSummary;
+    }
   | { kind: 'error'; ref: RepoRef; message: string };
+
+const isBusy = (s: CheckStatus) => s.kind === 'checking' || s.kind === 'reading-tree';
 
 export default function App() {
   const graph = sampleGraph;
@@ -36,15 +50,37 @@ export default function App() {
     inFlight.current = controller;
     setStatus({ kind: 'checking', ref });
 
-    const result = await fetchRepoMeta(ref, { signal: controller.signal });
+    // Call 1 of 2: does the repo exist, is it public, what's its default branch?
+    const metaResult = await fetchRepoMeta(ref, { signal: controller.signal });
+    if (controller.signal.aborted) return;
+    if (!metaResult.ok) {
+      inFlight.current = null;
+      if (metaResult.error.kind !== 'aborted')
+        setStatus({ kind: 'error', ref, message: metaResult.error.message });
+      return;
+    }
+    const meta = metaResult.value;
+    const branch = ref.ref ?? meta.defaultBranch;
+    setStatus({ kind: 'reading-tree', ref, meta, branch });
+
+    // Call 2 of 2: every path in the repo, in one request.
+    const treeResult = await fetchRepoTree(meta, branch, { signal: controller.signal });
     if (controller.signal.aborted) return;
     inFlight.current = null;
-
-    if (result.ok) {
-      setStatus({ kind: 'found', meta: result.value, branch: ref.ref ?? result.value.defaultBranch });
-    } else if (result.error.kind !== 'aborted') {
-      setStatus({ kind: 'error', ref, message: result.error.message });
+    if (!treeResult.ok) {
+      if (treeResult.error.kind !== 'aborted') {
+        setStatus({ kind: 'repo-problem', ref, meta, branch, message: treeResult.error.message });
+      }
+      return;
     }
+
+    const summary = filterTree(treeResult.value.entries);
+    const overLimit = fileLimitMessage(summary);
+    setStatus(
+      overLimit
+        ? { kind: 'repo-problem', ref, meta, branch, message: overLimit, summary }
+        : { kind: 'ready', ref, meta, branch, summary },
+    );
   }
 
   return (
@@ -77,9 +113,9 @@ export default function App() {
           guesswork.
         </p>
         <UrlForm
-          busy={status.kind === 'checking'}
+          busy={isBusy(status)}
           onAnalyse={handleAnalyse}
-          onEdit={() => setStatus((s) => (s.kind === 'checking' ? s : { kind: 'idle' }))}
+          onEdit={() => setStatus((s) => (isBusy(s) ? s : { kind: 'idle' }))}
         />
         <RepoStatus status={status} />
         <p className="hero__waitlist">
@@ -144,15 +180,31 @@ function RepoStatus({ status }: { status: CheckStatus }) {
           GitHub…
         </p>
       )}
-      {status.kind === 'found' && (
-        <p className="status status--found">
-          Found{' '}
-          <a href={status.meta.htmlUrl} target="_blank" rel="noopener noreferrer">
+      {status.kind === 'reading-tree' && (
+        <p className="status status--checking">
+          <span className="spinner" aria-hidden="true" /> Reading the file tree of{' '}
+          <code>
             {status.meta.owner}/{status.meta.repo}
-          </a>{' '}
-          (branch: <code>{status.branch}</code>). Import analysis is next, so the graph below is still sample
-          data.
+          </code>{' '}
+          (<code>{status.branch}</code>)…
         </p>
+      )}
+      {status.kind === 'ready' && (
+        <RepoHeader
+          meta={status.meta}
+          branch={status.branch}
+          requested={status.ref}
+          summary={status.summary}
+        />
+      )}
+      {status.kind === 'repo-problem' && (
+        <RepoHeader
+          meta={status.meta}
+          branch={status.branch}
+          requested={status.ref}
+          summary={status.summary}
+          problem={status.message}
+        />
       )}
       {status.kind === 'error' && (
         <p className="status status--error" role="alert">

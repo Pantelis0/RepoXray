@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchRepoMeta, GITHUB_API, repoApiUrl } from './github';
+import { fetchRepoMeta, fetchRepoTree, GITHUB_API, isSafeRef, repoApiUrl, treeApiUrl } from './github';
+import realTree from './__fixtures__/repoxray-tree.json';
 import { parseRepoUrl } from './parseRepoUrl';
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -49,18 +50,70 @@ describe('fetchRepoMeta', () => {
     expect(fetchImpl.mock.calls[0][0]).toBe('https://api.github.com/repos/facebook/react');
   });
 
-  it('returns the default branch and the canonical names', async () => {
-    const fetchImpl = vi.fn(async () => json(200, { ...reactBody, owner: { login: 'Facebook' } }));
+  it('returns the default branch, header details and the canonical names', async () => {
+    const fetchImpl = vi.fn(async () =>
+      json(200, {
+        ...reactBody,
+        name: 'react',
+        owner: { login: 'react' },
+        description: 'The library for web and native user interfaces.',
+        stargazers_count: 241000,
+        language: 'JavaScript',
+        archived: false,
+        fork: false,
+      }),
+    );
     const result = await fetchRepoMeta({ owner: 'facebook', repo: 'react' }, { fetchImpl, isOnline: online });
     expect(result).toEqual({
       ok: true,
       value: {
-        owner: 'Facebook',
+        owner: 'react',
         repo: 'react',
         defaultBranch: 'main',
-        htmlUrl: 'https://github.com/Facebook/react',
+        htmlUrl: 'https://github.com/react/react',
+        description: 'The library for web and native user interfaces.',
+        stars: 241000,
+        language: 'JavaScript',
+        archived: false,
+        fork: false,
       },
     });
+  });
+
+  it('copes with missing optional fields (no description, no language)', async () => {
+    const fetchImpl = vi.fn(async () =>
+      json(200, {
+        name: 'RepoXray',
+        owner: { login: 'Pantelis0' },
+        default_branch: 'main',
+        description: null,
+      }),
+    );
+    const result = await fetchRepoMeta(
+      { owner: 'Pantelis0', repo: 'RepoXray' },
+      { fetchImpl, isOnline: online },
+    );
+    expect(result).toMatchObject({ ok: true, value: { description: null, language: null, stars: 0 } });
+  });
+
+  it('flags archived repos and forks', async () => {
+    const fetchImpl = vi.fn(async () => json(200, { ...reactBody, archived: true, fork: true }));
+    const result = await fetchRepoMeta({ owner: 'a', repo: 'b' }, { fetchImpl, isOnline: online });
+    expect(result).toMatchObject({ ok: true, value: { archived: true, fork: true } });
+  });
+
+  it('maps 451 and non-rate-limit 403 to "blocked"', async () => {
+    for (const status of [451, 403]) {
+      const fetchImpl = vi.fn(async () => json(status, {}));
+      const result = await fetchRepoMeta({ owner: 'a', repo: 'b' }, { fetchImpl, isOnline: online });
+      expect(result).toMatchObject({ ok: false, error: { kind: 'blocked' } });
+    }
+  });
+
+  it('rejects a default branch that would be unsafe in a URL path', async () => {
+    const fetchImpl = vi.fn(async () => json(200, { ...reactBody, default_branch: '../../users' }));
+    const result = await fetchRepoMeta({ owner: 'a', repo: 'b' }, { fetchImpl, isOnline: online });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'unexpected' } });
   });
 
   it('maps 404 to "not found or not public"', async () => {
@@ -97,9 +150,9 @@ describe('fetchRepoMeta', () => {
   });
 
   it('reports other errors with their status', async () => {
-    const fetchImpl = vi.fn(async () => json(500, {}));
+    const fetchImpl = vi.fn(async () => json(502, {}));
     const result = await fetchRepoMeta({ owner: 'a', repo: 'b' }, { fetchImpl, isOnline: online });
-    expect(result).toMatchObject({ ok: false, error: { kind: 'unexpected', status: 500 } });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'unexpected', status: 502 } });
   });
 
   it('does not call GitHub when offline', async () => {
@@ -145,5 +198,109 @@ describe('fetchRepoMeta', () => {
     );
     controller.abort();
     expect(await pending).toMatchObject({ ok: false, error: { kind: 'aborted' } });
+  });
+});
+
+describe('isSafeRef / treeApiUrl', () => {
+  it('accepts normal branch and tag names, including ones with slashes', () => {
+    for (const ref of ['main', 'v5.3.0', 'release/v2', 'feature/a-b_c']) expect(isSafeRef(ref)).toBe(true);
+  });
+
+  it('rejects refs that could escape /git/trees/', () => {
+    for (const ref of ['', '..', 'a/../b', './x', 'a//b', '/main', 'main/', 'a b', 'a?b', 'a#b', '%2e%2e']) {
+      expect(isSafeRef(ref), ref).toBe(false);
+    }
+    expect(() => treeApiUrl({ owner: 'a', repo: 'b' }, '../x')).toThrow();
+  });
+
+  it('builds the recursive tree URL on the fixed host', () => {
+    expect(treeApiUrl({ owner: 'honojs', repo: 'hono' }, 'main')).toBe(
+      'https://api.github.com/repos/honojs/hono/git/trees/main?recursive=1',
+    );
+    const url = new URL(treeApiUrl({ owner: 'a', repo: 'b' }, 'release/v2'));
+    expect(url.host).toBe('api.github.com');
+    expect(url.pathname).toBe('/repos/a/b/git/trees/release/v2');
+  });
+});
+
+describe('fetchRepoTree', () => {
+  const online = () => true;
+  const repo = { owner: 'Pantelis0', repo: 'RepoXray' };
+
+  it('reads a real GitHub tree response', async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => json(200, realTree));
+    const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
+    expect(fetchImpl.mock.calls[0][0]).toBe(
+      'https://api.github.com/repos/Pantelis0/RepoXray/git/trees/main?recursive=1',
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.sha).toBe(realTree.sha);
+      expect(result.value.entries).toHaveLength(realTree.tree.length);
+      const ci = result.value.entries.find((e) => e.path === '.github/workflows/ci.yml');
+      expect(ci).toMatchObject({ type: 'blob', mode: '100644' });
+      expect(typeof ci?.size).toBe('number');
+    }
+  });
+
+  it('keeps only path, type, mode and size', async () => {
+    const fetchImpl = vi.fn(async () =>
+      json(200, {
+        sha: 'abc',
+        truncated: false,
+        tree: [
+          { path: 'a.ts', type: 'blob', mode: '100644', size: 5, sha: 'x', url: 'https://evil.example' },
+        ],
+      }),
+    );
+    const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
+    expect(result).toEqual({
+      ok: true,
+      value: { sha: 'abc', entries: [{ path: 'a.ts', type: 'blob', mode: '100644', size: 5 }] },
+    });
+  });
+
+  it('stops with "too large" when GitHub truncates the tree', async () => {
+    const fetchImpl = vi.fn(async () => json(200, { ...realTree, truncated: true }));
+    const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'too-large' } });
+  });
+
+  it('explains a missing branch or tag (404)', async () => {
+    const fetchImpl = vi.fn(async () => json(404, { message: 'Not Found', status: '404' }));
+    const result = await fetchRepoTree(repo, 'nope-branch', { fetchImpl, isOnline: online });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('ref-not-found');
+      expect(result.error.message).toContain('nope-branch');
+      expect(result.error.message).toContain('Pantelis0/RepoXray');
+    }
+  });
+
+  it('explains an empty repo (409)', async () => {
+    const fetchImpl = vi.fn(async () => json(409, { message: 'Git Repository is empty.' }));
+    const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'empty' } });
+  });
+
+  it('shares rate-limit handling with the metadata call', async () => {
+    const fetchImpl = vi.fn(async () =>
+      json(403, {}, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1792500000' }),
+    );
+    const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'rate-limited' } });
+  });
+
+  it('refuses an unsafe ref without making a request', async () => {
+    const fetchImpl = vi.fn();
+    const result = await fetchRepoTree(repo, '../../users/x', { fetchImpl, isOnline: online });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: false, error: { kind: 'ref-not-found' } });
+  });
+
+  it('rejects a response that is not a tree', async () => {
+    const fetchImpl = vi.fn(async () => json(200, { message: 'hello' }));
+    const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'unexpected' } });
   });
 });
