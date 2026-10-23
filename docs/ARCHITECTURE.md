@@ -15,7 +15,7 @@ flowchart TD
   C -->|404 or private| X2["Repo not found or not public"]
   C --> D["GitHub REST: GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1<br/>full file list with sizes"]
   D -->|tree truncated| X3["Repo too large for v1"]
-  D --> E["Filter tree<br/>keep .js .jsx .ts .tsx .mjs .cjs<br/>drop node_modules, dist, build, .next, coverage, *.min.js"]
+  D --> E["Filter tree<br/>keep .js .jsx .ts .tsx .mjs .cjs .mts .cts<br/>tag test / story / .d.ts<br/>drop node_modules, dist, build, .next, coverage, *.min.js"]
   E -->|over 2,000 files| X3
   E --> F["Bounded file reads<br/>raw.githubusercontent.com<br/>8 at a time, skip files over 500 KB"]
   F --> G["Web Worker: import extraction<br/>@babel/parser with errorRecovery"]
@@ -52,7 +52,7 @@ Everything runs in the browser. RepoXray has no backend in v1 (see [API proxy de
 | Language        | **TypeScript (strict)**                                                 | Graph JSON types are shared between worker and UI; catches resolver bugs early.                                                                                                                              |
 | Graph rendering | **React Flow** (`@xyflow/react`)                                        | Pan/zoom/drag/select built in; custom node components for highlighting.                                                                                                                                      |
 | Layout          | **d3-force**                                                            | React Flow has no auto-layout. A force layout matches the README's "force-directed graph" and suits import graphs, which aren't trees. Run it to a fixed number of ticks, then hand positions to React Flow. |
-| Import parsing  | **@babel/parser** (`typescript` + `jsx` plugins, `errorRecovery: true`) | One parser for all six extensions. `errorRecovery` keeps going on syntax errors (AC8). Regex would break on comments and strings.                                                                            |
+| Import parsing  | **@babel/parser** (`typescript` + `jsx` plugins, `errorRecovery: true`) | One parser for all eight extensions. `errorRecovery` keeps going on syntax errors (AC8). Regex would break on comments and strings.                                                                          |
 | Tests           | **Vitest**                                                              | Same config as Vite; unit tests for URL parsing, extraction and resolution (AC9).                                                                                                                            |
 | Lint/format     | oxlint + Prettier                                                       | oxlint ships with the current Vite template and is much faster than ESLint.                                                                                                                                  |
 | Hosting         | **Vercel** (static site)                                                | Free, deploys from GitHub on every push, no server needed in v1.                                                                                                                                             |
@@ -117,7 +117,7 @@ Ignored: package imports (`react`, `@scope/pkg`), aliases (`@/components`), temp
 For specifier `s` in file `dir/file.ts`, compute `p = normalize(dir + '/' + s)` and pick the first match in the filtered file list:
 
 1. `p` exactly (if it has a supported extension)
-2. `p` + `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`
+2. `p` + `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.mts`, `.cts`
 3. `p` + `/index` + each extension above
 4. If `s` ends in `.js`/`.jsx`/`.mjs`/`.cjs`, try the same path with `.ts`/`.tsx`/`.mts`/`.cts` (TypeScript ESM projects import `./foo.js` that is really `foo.ts`)
 

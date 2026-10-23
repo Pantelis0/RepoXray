@@ -61,7 +61,7 @@ RepoXray makes only 2 sequential REST calls, so this shouldn't happen. It matter
 
 **What this means for v1:**
 
-- A 425-file repo (hono) means 425 raw requests. At 8 in parallel that's well over 100 per minute, so we **must** handle `429` from raw.githubusercontent.com: honour `retry-after`, back off, and continue rather than fail the whole analysis.
+- A 452-file repo (hono) means 452 raw requests. At 8 in parallel that's well over 100 per minute, so we **must** handle `429` from raw.githubusercontent.com: honour `retry-after`, back off, and continue rather than fail the whole analysis.
 - Test this early against the hono fixture (issue: _Download file contents with bounded concurrency_).
 - If raw limits turn out to be tight in practice, options are: lower concurrency, or fall back to the [jsDelivr GitHub CDN](https://www.jsdelivr.com/?docs=gh) (`cdn.jsdelivr.net/gh/{owner}/{repo}@{ref}/{path}`), or bring the proxy forward.
 
@@ -69,3 +69,27 @@ RepoXray makes only 2 sequential REST calls, so this shouldn't happen. It matter
 
 - **Contents API** (`/repos/.../contents/{path}`) returns files up to 1 MB and costs one REST call each, which is why we don't use it.
 - **Private repos** return `404` without a token, which matches the v1 "public only" scope.
+
+## How RepoXray stays inside these limits
+
+**Bounded calls.** One analysis makes exactly **2** calls to api.github.com (repo metadata, then the recursive tree). This is enforced in code, not just by convention: `MAX_API_CALLS_PER_ANALYSIS` in `src/lib/github.ts` creates a call budget that every request spends from, and a third call is refused without touching the network (`over-budget` error). File downloads from raw.githubusercontent.com will get their own budget, capped at the 2,000-file limit.
+
+**Reporting incomplete analysis.** RepoXray never silently shows a partial graph:
+
+| Situation                               | What the user sees                                                                 |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| Tree truncated by GitHub (>100k / 7 MB) | Stops: "This repo is too large for v1…"                                            |
+| More than 2,000 JS/TS files             | Stops: "This repo has N JS/TS files; v1 supports up to 2,000."                     |
+| Some files over 500 KB                  | Continues, with "Analysis incomplete: N files are over 500 KB…"                    |
+| Call budget used up (a bug)             | Stops: "…stopped after 2 GitHub calls, so the analysis is incomplete."             |
+| Rate limit on either call (403/429)     | Stops with the reset time or `retry-after`; the repo header stays if call 1 worked |
+
+## Security: no tokens in client code
+
+RepoXray runs entirely in the visitor's browser, so anything in the bundle is public. It therefore calls GitHub **unauthenticated**: no personal access token, no OAuth app secret, no `Authorization` header.
+
+- A test asserts every request carries only an `Accept` header and no credentials.
+- `npm run check:secrets` scans `src/`, `public/`, `index.html`, `.github/` and the built `dist/` for GitHub token patterns (`ghp_…`, `github_pat_…`), `Authorization` headers, `VITE_*TOKEN/SECRET/KEY` variables, private keys and `.env` files. CI runs it after the build.
+- `.env` files are git-ignored.
+
+If v2 ever needs authenticated calls (5,000/hour), the token must live in a server-side proxy, never in this repo's client code.

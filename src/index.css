@@ -335,6 +335,7 @@ a {
 
 .repo-header__stats,
 .repo-header__moved,
+.repo-header__incomplete,
 .repo-header__next,
 .repo-header__problem {
   margin: 8px 0 0;
@@ -362,6 +363,19 @@ a {
 
 .repo-header__problem {
   color: var(--error);
+}
+
+.repo-header__incomplete {
+  padding: 6px 10px;
+  border-left: 3px solid var(--imported-by);
+  background: rgb(242 179 107 / 0.08);
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+.repo-header__incomplete strong {
+  color: var(--imported-by);
+  font-weight: 600;
 }
 
 .spinner {

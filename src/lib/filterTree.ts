@@ -3,16 +3,26 @@
 
 import type { TreeEntry } from './github';
 
-export const SUPPORTED_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs'] as const;
+export const SUPPORTED_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'] as const;
 export const IGNORED_DIRS = ['node_modules', 'dist', 'build', '.next', 'coverage'] as const;
 export const MAX_FILES = 2_000;
 export const MAX_FILE_BYTES = 500 * 1024;
+
+/**
+ * What a file is for. Everything except `source` will be hidden from the graph
+ * by default (the production graph is what people want first), but is kept so
+ * it can be toggled on.
+ */
+export type FileRole = 'source' | 'test' | 'story' | 'types';
 
 export interface SourceFile {
   path: string;
   size: number;
   /** Over MAX_FILE_BYTES: shown as a node but never downloaded. */
   tooLarge: boolean;
+  role: FileRole;
+  /** Git blob sha, when GitHub sent one. */
+  sha?: string;
 }
 
 export interface TreeSummary {
@@ -27,6 +37,23 @@ export interface TreeSummary {
 }
 
 const ignoredDirs = new Set<string>(IGNORED_DIRS);
+const TEST_DIRS = new Set(['__tests__', '__mocks__', 'test', 'tests']);
+
+export function fileRole(path: string): FileRole {
+  const lower = path.toLowerCase();
+  const name = lower.slice(lower.lastIndexOf('/') + 1);
+  if (/\.d\.[cm]?ts$/.test(name)) return 'types';
+  if (/\.(stories|story)\.[cm]?[jt]sx?$/.test(name)) return 'story';
+  if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(name)) return 'test';
+  if (
+    lower
+      .split('/')
+      .slice(0, -1)
+      .some((d) => TEST_DIRS.has(d))
+  )
+    return 'test';
+  return 'source';
+}
 
 function hasSupportedExtension(path: string): boolean {
   const lower = path.toLowerCase();
@@ -55,7 +82,13 @@ export function filterTree(entries: TreeEntry[]): TreeSummary {
       continue;
     }
     const size = entry.size ?? 0;
-    sourceFiles.push({ path: entry.path, size, tooLarge: size > MAX_FILE_BYTES });
+    sourceFiles.push({
+      path: entry.path,
+      size,
+      tooLarge: size > MAX_FILE_BYTES,
+      role: fileRole(entry.path),
+      ...(entry.sha ? { sha: entry.sha } : {}),
+    });
   }
 
   sourceFiles.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
