@@ -25,3 +25,5 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+      - name: No credentials in source or the built site
+        run: npm run check:secrets

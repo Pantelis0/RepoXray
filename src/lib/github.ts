@@ -26,6 +26,8 @@ export interface TreeEntry {
   mode: string;
   /** Bytes, for blobs only. */
   size?: number;
+  /** Git object id. Content-addressed, so it can key a download cache later. */
+  sha?: string;
 }
 
 export interface RepoTree {
@@ -44,6 +46,7 @@ export type GitHubError =
   | { kind: 'network'; message: string }
   | { kind: 'timeout'; message: string }
   | { kind: 'aborted'; message: string }
+  | { kind: 'over-budget'; message: string }
   | { kind: 'unexpected'; message: string; status?: number };
 
 /** @deprecated use GitHubError */
@@ -56,6 +59,8 @@ export type RepoTreeResult = Result<RepoTree>;
 export interface FetchOptions {
   /** Abort the request, e.g. when the user submits another repo. */
   signal?: AbortSignal;
+  /** Shared cap on GitHub calls for one analysis. Every request spends one call. */
+  budget?: CallBudget;
   timeoutMs?: number;
   /** Injected in tests. */
   fetchImpl?: typeof fetch;
@@ -64,6 +69,35 @@ export interface FetchOptions {
 }
 
 const enc = encodeURIComponent;
+
+/**
+ * Calls one analysis may make to api.github.com: repo metadata + the recursive
+ * tree. Unauthenticated users get 60 an hour, so a bug must never be able to
+ * loop. File downloads (raw.githubusercontent.com) get their own budget later.
+ */
+export const MAX_API_CALLS_PER_ANALYSIS = 2;
+
+export interface CallBudget {
+  readonly max: number;
+  readonly used: number;
+  /** Spends one call. False (and nothing spent) once the budget is gone. */
+  take(): boolean;
+}
+
+export function createCallBudget(max: number): CallBudget {
+  let used = 0;
+  return {
+    max,
+    get used() {
+      return used;
+    },
+    take() {
+      if (used >= max) return false;
+      used++;
+      return true;
+    },
+  };
+}
 
 // Branch or tag names as Git allows them, minus anything that could step
 // outside /git/trees/ when placed in the URL path.
@@ -125,6 +159,7 @@ function rateLimitError(res: Response): GitHubError | null {
 async function request(url: string, options: FetchOptions): Promise<Result<Response>> {
   const {
     signal,
+    budget,
     timeoutMs = 10_000,
     fetchImpl = globalThis.fetch.bind(globalThis),
     isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine),
@@ -133,12 +168,19 @@ async function request(url: string, options: FetchOptions): Promise<Result<Respo
   if (!isOnline()) {
     return fail({ kind: 'offline', message: 'You’re offline. Reconnect and try again.' });
   }
+  if (budget && !budget.take()) {
+    return fail({
+      kind: 'over-budget',
+      message: `RepoXray stopped after ${budget.max} GitHub calls for this repo, so the analysis is incomplete. Please report this as a bug.`,
+    });
+  }
 
   const timeout = AbortSignal.timeout(timeoutMs);
   const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
   let res: Response;
   try {
+    // Deliberately unauthenticated: no Authorization header and no token anywhere in client code.
     res = await fetchImpl(url, { headers: { Accept: 'application/vnd.github+json' }, signal: combined });
   } catch (err) {
     if (signal?.aborted) return fail({ kind: 'aborted', message: 'Cancelled.' });
@@ -266,7 +308,7 @@ export async function fetchRepoTree(
 
   const entries: TreeEntry[] = [];
   for (const raw of data.tree as unknown[]) {
-    const e = raw as { path?: unknown; type?: unknown; mode?: unknown; size?: unknown };
+    const e = raw as { path?: unknown; type?: unknown; mode?: unknown; size?: unknown; sha?: unknown };
     if (typeof e?.path !== 'string' || typeof e.mode !== 'string') continue;
     if (e.type !== 'blob' && e.type !== 'tree' && e.type !== 'commit') continue;
     entries.push({
@@ -274,6 +316,7 @@ export async function fetchRepoTree(
       type: e.type,
       mode: e.mode,
       ...(typeof e.size === 'number' ? { size: e.size } : {}),
+      ...(typeof e.sha === 'string' ? { sha: e.sha } : {}),
     });
   }
 

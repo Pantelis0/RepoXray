@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fileLimitMessage, filterTree, MAX_FILE_BYTES, MAX_FILES } from './filterTree';
+import { fileLimitMessage, fileRole, filterTree, MAX_FILE_BYTES, MAX_FILES } from './filterTree';
 import type { TreeEntry } from './github';
 import realTree from './__fixtures__/repoxray-tree.json';
 import chalk from './__fixtures__/trees/chalk.json';
@@ -9,7 +9,7 @@ import zustand from './__fixtures__/trees/zustand.json';
 const blob = (path: string, size = 100, mode = '100644'): TreeEntry => ({ path, type: 'blob', mode, size });
 
 describe('filterTree', () => {
-  it('keeps the six supported extensions and nothing else', () => {
+  it('keeps the eight supported extensions and nothing else', () => {
     const { sourceFiles, totalFiles } = filterTree([
       blob('a.js'),
       blob('b.jsx'),
@@ -17,13 +17,24 @@ describe('filterTree', () => {
       blob('d.tsx'),
       blob('e.mjs'),
       blob('f.cjs'),
+      blob('g.mts'),
+      blob('h.cts'),
       blob('README.md'),
       blob('styles.css'),
       blob('data.json'),
       blob('script.py'),
     ]);
-    expect(sourceFiles.map((f) => f.path)).toEqual(['a.js', 'b.jsx', 'c.ts', 'd.tsx', 'e.mjs', 'f.cjs']);
-    expect(totalFiles).toBe(10);
+    expect(sourceFiles.map((f) => f.path)).toEqual([
+      'a.js',
+      'b.jsx',
+      'c.ts',
+      'd.tsx',
+      'e.mjs',
+      'f.cjs',
+      'g.mts',
+      'h.cts',
+    ]);
+    expect(totalFiles).toBe(12);
   });
 
   it('keeps .d.ts files and is case-insensitive about extensions', () => {
@@ -76,6 +87,38 @@ describe('filterTree', () => {
   });
 });
 
+describe('fileRole', () => {
+  it.each([
+    ['src/index.ts', 'source'],
+    ['src/components/Button.tsx', 'source'],
+    ['src/testing-utils.ts', 'source'],
+    ['types/index.d.ts', 'types'],
+    ['src/env.d.mts', 'types'],
+    ['src/Button.stories.tsx', 'story'],
+    ['src/Button.story.jsx', 'story'],
+    ['src/utils.test.ts', 'test'],
+    ['src/utils.spec.mjs', 'test'],
+    ['src/__tests__/utils.ts', 'test'],
+    ['packages/core/test/fixtures.js', 'test'],
+    ['src/__mocks__/fs.ts', 'test'],
+  ] as const)('%s is %s', (path, role) => {
+    expect(fileRole(path)).toBe(role);
+  });
+
+  it('tags files and keeps the blob sha without changing what is kept', () => {
+    const { sourceFiles } = filterTree([
+      { ...blob('src/a.ts'), sha: 'aaa' },
+      blob('src/a.test.ts'),
+      blob('src/a.d.ts'),
+    ]);
+    expect(sourceFiles).toEqual([
+      { path: 'src/a.d.ts', size: 100, tooLarge: false, role: 'types' },
+      { path: 'src/a.test.ts', size: 100, tooLarge: false, role: 'test' },
+      { path: 'src/a.ts', size: 100, tooLarge: false, role: 'source', sha: 'aaa' },
+    ]);
+  });
+});
+
 describe('fileLimitMessage', () => {
   it('is null up to the limit and explains the count above it', () => {
     const under = filterTree(Array.from({ length: MAX_FILES }, (_, i) => blob(`f${i}.ts`)));
@@ -87,10 +130,12 @@ describe('fileLimitMessage', () => {
 
 describe('filterTree on the three test-fixture repos (docs/TEST_FIXTURES.md)', () => {
   it.each([
-    ['chalk', chalk, 20],
-    ['zustand', zustand, 50],
-    ['hono', hono, 425],
-  ])('%s → %i JS/TS files', (_name, fixture, expected) => {
-    expect(filterTree(fixture.tree as TreeEntry[]).sourceFiles).toHaveLength(expected);
+    ['chalk', 20, 0, chalk],
+    ['zustand', 51, 1, zustand],
+    ['hono', 452, 27, hono],
+  ])('%s → %i JS/TS files (%i of them .mts/.cts)', (_name, expected, moduleTs, fixture) => {
+    const { sourceFiles } = filterTree(fixture.tree as TreeEntry[]);
+    expect(sourceFiles).toHaveLength(expected);
+    expect(sourceFiles.filter((f) => /\.[cm]ts$/.test(f.path))).toHaveLength(moduleTs);
   });
 });

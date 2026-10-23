@@ -52,7 +52,6 @@ export function RepoHeader({ meta, branch, requested, summary, problem }: RepoHe
             {' · '}
             {full.format(summary.totalFiles)} files{' · '}
             <strong>{full.format(summary.sourceFiles.length)} JS/TS files</strong>
-            {summary.tooLargeCount > 0 && <> ({full.format(summary.tooLargeCount)} over 500 KB, skipped)</>}
           </>
         )}
       </p>
@@ -61,6 +60,14 @@ export function RepoHeader({ meta, branch, requested, summary, problem }: RepoHe
         <p className="repo-header__moved">
           <span aria-hidden="true">↪ </span>You typed <code>{typed}</code>. GitHub says it now lives at{' '}
           <code>{fullName}</code>.
+        </p>
+      )}
+
+      {!problem && summary && summary.tooLargeCount > 0 && (
+        <p className="repo-header__incomplete" role="status">
+          <strong>Analysis incomplete:</strong> {full.format(summary.tooLargeCount)}{' '}
+          {summary.tooLargeCount === 1 ? 'file is' : 'files are'} over 500 KB, so{' '}
+          {summary.tooLargeCount === 1 ? 'it' : 'they'} will show without imports.
         </p>
       )}
 

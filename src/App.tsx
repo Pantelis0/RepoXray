@@ -4,7 +4,13 @@ import { RepoHeader } from './components/RepoHeader';
 import { UrlForm } from './components/UrlForm';
 import { fileLimitMessage, filterTree, type TreeSummary } from './lib/filterTree';
 import { folderColors } from './lib/folderColors';
-import { fetchRepoMeta, fetchRepoTree, type RepoMeta } from './lib/github';
+import {
+  createCallBudget,
+  fetchRepoMeta,
+  fetchRepoTree,
+  MAX_API_CALLS_PER_ANALYSIS,
+  type RepoMeta,
+} from './lib/github';
 import { formatRepoRef, type RepoRef } from './lib/parseRepoUrl';
 import { sampleGraph } from './lib/sampleGraph';
 
@@ -49,9 +55,12 @@ export default function App() {
     const controller = new AbortController();
     inFlight.current = controller;
     setStatus({ kind: 'checking', ref });
+    // One budget per analysis: a bug can never spend more than this many of the
+    // visitor's 60 unauthenticated calls an hour.
+    const budget = createCallBudget(MAX_API_CALLS_PER_ANALYSIS);
 
     // Call 1 of 2: does the repo exist, is it public, what's its default branch?
-    const metaResult = await fetchRepoMeta(ref, { signal: controller.signal });
+    const metaResult = await fetchRepoMeta(ref, { signal: controller.signal, budget });
     if (controller.signal.aborted) return;
     if (!metaResult.ok) {
       inFlight.current = null;
@@ -64,7 +73,7 @@ export default function App() {
     setStatus({ kind: 'reading-tree', ref, meta, branch });
 
     // Call 2 of 2: every path in the repo, in one request.
-    const treeResult = await fetchRepoTree(meta, branch, { signal: controller.signal });
+    const treeResult = await fetchRepoTree(meta, branch, { signal: controller.signal, budget });
     if (controller.signal.aborted) return;
     inFlight.current = null;
     if (!treeResult.ok) {

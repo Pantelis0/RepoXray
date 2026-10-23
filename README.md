@@ -41,7 +41,7 @@ That's it. v1 does one thing well: turns "where does this file get used?" into a
 | Area               | What's included                                                                                                                                                  |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Input**          | Public GitHub repo URL. Optional branch/tag via `/tree/<ref>`; defaults to the default branch.                                                                   |
-| **Files analysed** | `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`                                                                                                                     |
+| **Files analysed** | `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`                                                                                                     |
 | **Edges detected** | Relative imports only (paths starting with `./` or `../`): `import … from`, `export … from`, `import()` with a string literal, `require()` with a string literal |
 | **Resolution**     | Extensionless paths (`./utils` → `utils.ts`, `utils.js`, …) and directory index files (`./lib` → `lib/index.ts`)                                                 |
 | **Graph view**     | Interactive force-directed graph; nodes coloured by top-level folder; pan, zoom, drag                                                                            |
@@ -82,7 +82,7 @@ v1 ships when **all** of these pass:
 
 **Parsing**
 
-- [ ] AC5 — All six supported extensions appear as nodes; ignored folders do not.
+- [ ] AC5 — All eight supported extensions appear as nodes; ignored folders do not.
 - [ ] AC6 — The four import forms listed above produce edges; package imports produce none.
 - [ ] AC7 — Extensionless and `index` imports resolve to the correct file.
 - [ ] AC8 — A file with a syntax error is still shown as a node and does not stop the rest of the analysis.

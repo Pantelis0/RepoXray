@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fetchRepoMeta, fetchRepoTree, GITHUB_API, isSafeRef, repoApiUrl, treeApiUrl } from './github';
+import {
+  createCallBudget,
+  fetchRepoMeta,
+  fetchRepoTree,
+  GITHUB_API,
+  isSafeRef,
+  MAX_API_CALLS_PER_ANALYSIS,
+  repoApiUrl,
+  treeApiUrl,
+} from './github';
 import realTree from './__fixtures__/repoxray-tree.json';
 import { parseRepoUrl } from './parseRepoUrl';
 
@@ -243,7 +252,7 @@ describe('fetchRepoTree', () => {
     }
   });
 
-  it('keeps only path, type, mode and size', async () => {
+  it('keeps only path, type, mode, size and the blob sha', async () => {
     const fetchImpl = vi.fn(async () =>
       json(200, {
         sha: 'abc',
@@ -256,7 +265,7 @@ describe('fetchRepoTree', () => {
     const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
     expect(result).toEqual({
       ok: true,
-      value: { sha: 'abc', entries: [{ path: 'a.ts', type: 'blob', mode: '100644', size: 5 }] },
+      value: { sha: 'abc', entries: [{ path: 'a.ts', type: 'blob', mode: '100644', size: 5, sha: 'x' }] },
     });
   });
 
@@ -302,5 +311,93 @@ describe('fetchRepoTree', () => {
     const fetchImpl = vi.fn(async () => json(200, { message: 'hello' }));
     const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
     expect(result).toMatchObject({ ok: false, error: { kind: 'unexpected' } });
+  });
+});
+
+describe('rate limits on either call (403 and 429)', () => {
+  const online = () => true;
+  const repo = { owner: 'a', repo: 'b' };
+  const limited = (status: number) =>
+    json(status, {}, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1792500000' });
+
+  it.each([403, 429])('metadata call: %i with 0 remaining is the hourly limit', async (status) => {
+    const result = await fetchRepoMeta(repo, {
+      fetchImpl: vi.fn(async () => limited(status)),
+      isOnline: online,
+    });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'rate-limited' } });
+    if (!result.ok) expect(result.error.message).toMatch(/hourly limit/);
+  });
+
+  it.each([403, 429])('tree call: %i with 0 remaining is the hourly limit', async (status) => {
+    const result = await fetchRepoTree(repo, 'main', {
+      fetchImpl: vi.fn(async () => limited(status)),
+      isOnline: online,
+    });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'rate-limited' } });
+  });
+
+  it('tree call: 429 with retry-after is a secondary limit', async () => {
+    const fetchImpl = vi.fn(async () => json(429, {}, { 'retry-after': '45' }));
+    const result = await fetchRepoTree(repo, 'main', { fetchImpl, isOnline: online });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'rate-limited' } });
+    if (!result.ok) expect(result.error.message).toMatch(/45 seconds/);
+  });
+
+  it('a 429 without rate-limit headers is still reported, not treated as success', async () => {
+    const result = await fetchRepoMeta(repo, {
+      fetchImpl: vi.fn(async () => json(429, {})),
+      isOnline: online,
+    });
+    expect(result).toMatchObject({ ok: false, error: { kind: 'unexpected', status: 429 } });
+  });
+});
+
+describe('call budget', () => {
+  const online = () => true;
+  const repo = { owner: 'a', repo: 'b' };
+
+  it('allows exactly two GitHub API calls per analysis', () => {
+    expect(MAX_API_CALLS_PER_ANALYSIS).toBe(2);
+    const budget = createCallBudget(MAX_API_CALLS_PER_ANALYSIS);
+    expect([budget.take(), budget.take(), budget.take()]).toEqual([true, true, false]);
+    expect(budget.used).toBe(2);
+  });
+
+  it('refuses a third call without touching the network and says the analysis is incomplete', async () => {
+    const fetchImpl = vi.fn(async () => json(200, reactBody));
+    const budget = createCallBudget(MAX_API_CALLS_PER_ANALYSIS);
+    const opts = { fetchImpl, isOnline: online, budget };
+    await fetchRepoMeta(repo, opts);
+    await fetchRepoMeta(repo, opts);
+    const third = await fetchRepoMeta(repo, opts);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(third).toMatchObject({ ok: false, error: { kind: 'over-budget' } });
+    if (!third.ok) expect(third.error.message).toMatch(/incomplete/);
+  });
+
+  it('does not spend budget when offline or when a ref is refused', async () => {
+    const budget = createCallBudget(1);
+    await fetchRepoMeta(repo, { fetchImpl: vi.fn(), isOnline: () => false, budget });
+    await fetchRepoTree(repo, '../x', { fetchImpl: vi.fn(), isOnline: online, budget });
+    expect(budget.used).toBe(0);
+  });
+});
+
+describe('no credentials', () => {
+  it('sends every request without an Authorization header or credentials', async () => {
+    const fetchImpl = vi.fn(async (url: string) =>
+      url.includes('/git/trees/') ? json(200, realTree) : json(200, reactBody),
+    );
+    const opts = { fetchImpl: fetchImpl as unknown as typeof fetch, isOnline: () => true };
+    await fetchRepoMeta({ owner: 'a', repo: 'b' }, opts);
+    await fetchRepoTree({ owner: 'a', repo: 'b' }, 'main', opts);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    for (const [, init] of fetchImpl.mock.calls as unknown as [string, RequestInit][]) {
+      const headers = new Headers(init.headers);
+      expect(headers.has('authorization')).toBe(false);
+      expect([...headers.keys()]).toEqual(['accept']);
+      expect(init.credentials).toBeUndefined();
+    }
   });
 });

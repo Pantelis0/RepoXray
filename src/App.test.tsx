@@ -130,6 +130,48 @@ describe('App repo analysis', () => {
     );
   });
 
+  it('keeps the repo header when the tree call (call 2) hits the rate limit', async () => {
+    routes({
+      '/git/trees/': () => json(429, {}, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1792500000' }),
+      '/repos/': () => json(200, reactMeta),
+    });
+    await analyse('facebook/react');
+    expect((await screen.findByRole('alert')).textContent).toMatch(/hourly limit/i);
+    expect(screen.getByRole('article', { name: /react\/react/ })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a secondary rate limit (429 + retry-after) on the first call', async () => {
+    routes({ '/repos/': () => json(429, {}, { 'retry-after': '20' }) });
+    await analyse('facebook/react');
+    expect((await screen.findByRole('alert')).textContent).toMatch(/20 seconds/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the analysis is incomplete when files are over 500 KB', async () => {
+    const tree = [
+      { path: 'src/a.ts', type: 'blob', mode: '100644', size: 10 },
+      { path: 'src/big.js', type: 'blob', mode: '100644', size: 600 * 1024 },
+      { path: 'src/huge.js', type: 'blob', mode: '100644', size: 900 * 1024 },
+    ];
+    routes({
+      '/git/trees/': () => json(200, { sha: 'x', truncated: false, tree }),
+      '/repos/': () => json(200, reactMeta),
+    });
+    await analyse('facebook/react');
+    const notice = await screen.findByRole('status');
+    expect(notice.textContent).toBe(
+      'Analysis incomplete: 2 files are over 500 KB, so they will show without imports.',
+    );
+  });
+
+  it('shows no incomplete notice when every file can be read', async () => {
+    routes({ '/git/trees/': () => json(200, realTree), '/repos/': () => json(200, reactMeta) });
+    await analyse('facebook/react');
+    await screen.findByText(/File list ready/);
+    expect(screen.queryByText(/Analysis incomplete/)).toBeNull();
+  });
+
   it('shows "not found or not public" for a 404 and never asks for the tree', async () => {
     routes({ '/repos/': () => json(404, { message: 'Not Found' }) });
     await analyse('someone/private-thing');
