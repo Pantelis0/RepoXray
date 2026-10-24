@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GraphView } from './components/GraphView';
+import { FileInventory } from './components/FileInventory';
 import { RepoHeader } from './components/RepoHeader';
 import { UrlForm } from './components/UrlForm';
 import { fileLimitMessage, filterTree, type TreeSummary } from './lib/filterTree';
@@ -135,6 +136,13 @@ export default function App() {
           .
         </p>
       </section>
+
+      {status.kind === 'ready' && (
+        <FileInventory
+          key={`${status.meta.owner}/${status.meta.repo}@${status.branch}`}
+          summary={status.summary}
+        />
+      )}
 
       <section className="canvas-card" aria-label="Import graph">
         <div className="canvas-card__bar">

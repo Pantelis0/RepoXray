@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { fileLimitMessage, fileRole, filterTree, MAX_FILE_BYTES, MAX_FILES } from './filterTree';
+import {
+  fileLimitMessage,
+  fileRole,
+  filterTree,
+  MAX_FILE_BYTES,
+  MAX_FILES,
+  MAX_SKIPPED_SAMPLE,
+  skipReason,
+} from './filterTree';
 import type { TreeEntry } from './github';
 import realTree from './__fixtures__/repoxray-tree.json';
 import chalk from './__fixtures__/trees/chalk.json';
@@ -87,6 +95,42 @@ describe('filterTree', () => {
   });
 });
 
+describe('skipReason', () => {
+  it.each([
+    ['vendor/lib.js', 'folder'],
+    ['source/vendor/ansi-styles/index.js', 'folder'],
+    ['third_party/x.ts', 'folder'],
+    ['packages/a/.turbo/cache.js', 'folder'],
+    ['.yarn/releases/yarn.cjs', 'folder'],
+    ['apps/web/out/page.js', 'folder'],
+    ['.svelte-kit/output/app.js', 'folder'],
+    ['public/app.min.js', 'minified'],
+    ['lib/x.min.mjs', 'minified'],
+    ['src/api.generated.ts', 'generated'],
+    ['src/schema.gen.tsx', 'generated'],
+    ['static/main.bundle.js', 'generated'],
+    ['static/42.chunk.js', 'generated'],
+  ] as const)('%s → %s', (path, reason) => {
+    expect(skipReason(path)).toBe(reason);
+  });
+
+  it.each(['src/index.ts', 'src/vendors.ts', 'src/output.ts', 'src/generator.ts', 'src/bundle.ts'])(
+    'keeps %s',
+    (path) => {
+      expect(skipReason(path)).toBeNull();
+    },
+  );
+
+  it('counts skipped files by reason and keeps a bounded sample', () => {
+    const many = Array.from({ length: MAX_SKIPPED_SAMPLE + 10 }, (_, i) => blob(`vendor/f${i}.js`));
+    const summary = filterTree([...many, blob('a.min.js'), blob('b.gen.ts'), blob('src/ok.ts')]);
+    expect(summary.skippedByReason).toEqual({ folder: MAX_SKIPPED_SAMPLE + 10, minified: 1, generated: 1 });
+    expect(summary.ignoredCount).toBe(MAX_SKIPPED_SAMPLE + 12);
+    expect(summary.skippedSample).toHaveLength(MAX_SKIPPED_SAMPLE);
+    expect(summary.sourceFiles.map((f) => f.path)).toEqual(['src/ok.ts']);
+  });
+});
+
 describe('fileRole', () => {
   it.each([
     ['src/index.ts', 'source'],
@@ -130,7 +174,7 @@ describe('fileLimitMessage', () => {
 
 describe('filterTree on the three test-fixture repos (docs/TEST_FIXTURES.md)', () => {
   it.each([
-    ['chalk', 20, 0, chalk],
+    ['chalk', 14, 0, chalk],
     ['zustand', 51, 1, zustand],
     ['hono', 452, 27, hono],
   ])('%s → %i JS/TS files (%i of them .mts/.cts)', (_name, expected, moduleTs, fixture) => {

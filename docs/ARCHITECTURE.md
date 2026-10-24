@@ -15,7 +15,7 @@ flowchart TD
   C -->|404 or private| X2["Repo not found or not public"]
   C --> D["GitHub REST: GET /repos/{owner}/{repo}/git/trees/{ref}?recursive=1<br/>full file list with sizes"]
   D -->|tree truncated| X3["Repo too large for v1"]
-  D --> E["Filter tree<br/>keep .js .jsx .ts .tsx .mjs .cjs .mts .cts<br/>tag test / story / .d.ts<br/>drop node_modules, dist, build, .next, coverage, *.min.js"]
+  D --> E["Filter tree<br/>keep .js .jsx .ts .tsx .mjs .cjs .mts .cts<br/>tag test / story / .d.ts<br/>drop vendored, build and generated code<br/>(node_modules, vendor, dist, build, out, *.min.js, *.generated.ts …)"]
   E -->|over 2,000 files| X3
   E --> F["Bounded file reads<br/>raw.githubusercontent.com<br/>8 at a time, skip files over 500 KB"]
   F --> G["Web Worker: import extraction<br/>@babel/parser with errorRecovery"]
