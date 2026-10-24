@@ -12,6 +12,7 @@ import type { TreeEntry } from './github';
 import realTree from './__fixtures__/repoxray-tree.json';
 import chalk from './__fixtures__/trees/chalk.json';
 import hono from './__fixtures__/trees/hono.json';
+import vite from './__fixtures__/trees/vite.json';
 import zustand from './__fixtures__/trees/zustand.json';
 
 const blob = (path: string, size = 100, mode = '100644'): TreeEntry => ({ path, type: 'blob', mode, size });
@@ -74,7 +75,8 @@ describe('filterTree', () => {
       blob('real.js', 10, '100755'),
     ]);
     expect(sourceFiles.map((f) => f.path)).toEqual(['real.js']);
-    expect(totalFiles).toBe(1);
+    // The symlink still counts as a file, matching GitHub's file count.
+    expect(totalFiles).toBe(2);
   });
 
   it('marks files over 500 KB as too large without dropping them', () => {
@@ -177,9 +179,33 @@ describe('filterTree on the three test-fixture repos (docs/TEST_FIXTURES.md)', (
     ['chalk', 14, 0, chalk],
     ['zustand', 51, 1, zustand],
     ['hono', 452, 27, hono],
+    ['vite', 1623, 6, vite],
   ])('%s → %i JS/TS files (%i of them .mts/.cts)', (_name, expected, moduleTs, fixture) => {
     const { sourceFiles } = filterTree(fixture.tree as TreeEntry[]);
     expect(sourceFiles).toHaveLength(expected);
     expect(sourceFiles.filter((f) => /\.[cm]ts$/.test(f.path))).toHaveLength(moduleTs);
+  });
+});
+
+describe('inventory matches the real GitHub file list (D06 verify, 24 Oct)', () => {
+  // Expected numbers come from `git ls-tree -r` on a fresh clone, checked by a
+  // separate script that does not use this code. See docs/TEST_FIXTURES.md.
+  it.each([
+    ['chalk', chalk, 35, 6],
+    ['zustand', zustand, 144, 0],
+    ['hono', hono, 583, 6],
+    ['vite', vite, 2909, 10],
+  ])('%s: %i files in total like GitHub, %i vendored/build skipped', (_name, fixture, total, skipped) => {
+    const summary = filterTree(fixture.tree as TreeEntry[]);
+    expect(summary.totalFiles).toBe(total);
+    expect(summary.ignoredCount).toBe(skipped);
+  });
+
+  it('vite: symlinks count as files but are never analysed', () => {
+    const tree = vite.tree as TreeEntry[];
+    const symlinks = tree.filter((e) => e.mode === '120000').map((e) => e.path);
+    expect(symlinks).toHaveLength(5);
+    const kept = new Set(filterTree(tree).sourceFiles.map((f) => f.path));
+    expect(symlinks.some((p) => kept.has(p))).toBe(false);
   });
 });

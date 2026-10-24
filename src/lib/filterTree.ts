@@ -42,7 +42,7 @@ export interface SourceFile {
 }
 
 export interface TreeSummary {
-  /** Every file (blob) in the repo, including ones we ignore. */
+  /** Every file (blob) in the repo, symlinks included, so it matches GitHub's own count. */
   totalFiles: number;
   /** JS/TS files that will become nodes, in path order. */
   sourceFiles: SourceFile[];
@@ -108,9 +108,11 @@ export function filterTree(entries: TreeEntry[]): TreeSummary {
   const sourceFiles: SourceFile[] = [];
 
   for (const entry of entries) {
-    // Regular files only: skips folders, submodules (commit) and symlinks (120000).
-    if (entry.type !== 'blob' || entry.mode === '120000') continue;
+    // Count every file the way GitHub does (symlinks included), but only analyse
+    // regular files: folders, submodules (commit) and symlinks (120000) are skipped.
+    if (entry.type !== 'blob') continue;
     totalFiles++;
+    if (entry.mode === '120000') continue;
     if (!hasSupportedExtension(entry.path)) continue;
     const reason = skipReason(entry.path);
     if (reason) {
