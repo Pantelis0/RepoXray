@@ -11,15 +11,15 @@ Pin each fixture to the commit below so results don't drift. Bump the commit del
 | Role                         | **Small JS**                                  | **Small TS + React**                                | **Mid-size TS**                               |
 | Licence                      | MIT                                           | MIT                                                 | MIT                                           |
 | Pinned commit (`main`)       | `47fc05a`                                     | `d7a5583`                                           | `5ca49b0`                                     |
-| Analysable files*            | 20                                            | 51                                                  | 452                                           |
+| Analysable files*            | 14                                            | 51                                                  | 452                                           |
 | …of which `.mts` / `.cts`    | 0                                             | 1                                                   | 27                                            |
-| Roles: source / test / types | 8 / 8 / 4                                     | 34 / 15 / 2                                         | 288 / 162 / 2                                 |
+| Roles: source / test / types | 5 / 8 / 1                                     | 34 / 15 / 2                                         | 288 / 162 / 2                                 |
 | Files over 500 KB            | 0                                             | 0                                                   | 0                                             |
 | Relative import statements*  | 18                                            | 46                                                  | 1,054                                         |
 | `@/` alias imports           | 0                                             | 0                                                   | 3                                             |
 | Main folders                 | `source/`, `test/`, `examples/`               | `src/`, `tests/`, `examples/`                       | `src/`, `adapters/`, `benchmarks/`            |
 
-\*Counted on 20 Oct 2026 with the v1 filter from [ARCHITECTURE.md](ARCHITECTURE.md) (eight extensions since 23 Oct, when `.mts`/`.cts` were added; `node_modules`, `dist`, `build`, `.next`, `coverage`, `*.min.js` removed). Import count is a rough `grep`, so treat it as a sanity range, not an exact expected edge count.
+\*Counted on 20 Oct 2026 with the v1 filter from [ARCHITECTURE.md](ARCHITECTURE.md) (eight extensions since 23 Oct, when `.mts`/`.cts` were added; vendored, build and generated code removed, see README "Ignored paths"). Since 24 Oct `vendor/` folders are skipped too, which removes chalk's 6 files in `source/vendor/`: imports into them will show as skipped, not unresolved. Import count is a rough `grep`, so treat it as a sanity range, not an exact expected edge count.
 
 ## What each one tests
 
@@ -46,7 +46,7 @@ Pin each fixture to the commit below so results don't drift. Bump the commit del
 
 | Fixture | Nodes | Edges | Unresolved    | Parse errors | Time to graph |
 | ------- | ----- | ----- | ------------- | ------------ | ------------- |
-| chalk   | 20    | _tbd_ | _tbd_         | 0            | _tbd_         |
+| chalk   | 14    | _tbd_ | _tbd_         | 0            | _tbd_         |
 | zustand | 51    | _tbd_ | _tbd_         | 0            | _tbd_         |
 | hono    | 452   | _tbd_ | ≥ 3 (aliases) | 0            | < 10 s        |
 

@@ -4,7 +4,23 @@
 import type { TreeEntry } from './github';
 
 export const SUPPORTED_EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.mts', '.cts'] as const;
-export const IGNORED_DIRS = ['node_modules', 'dist', 'build', '.next', 'coverage'] as const;
+/** Dependencies, build output and caches: code nobody in the repo wrote by hand. */
+export const IGNORED_DIRS = [
+  'node_modules',
+  'dist',
+  'build',
+  '.next',
+  'coverage',
+  'vendor',
+  'third_party',
+  'bower_components',
+  '.yarn',
+  'out',
+  '.turbo',
+  '.vercel',
+  '.svelte-kit',
+  'storybook-static',
+] as const;
 export const MAX_FILES = 2_000;
 export const MAX_FILE_BYTES = 500 * 1024;
 
@@ -32,9 +48,22 @@ export interface TreeSummary {
   sourceFiles: SourceFile[];
   /** How many of sourceFiles are over MAX_FILE_BYTES. */
   tooLargeCount: number;
-  /** JS/TS files skipped because they're in an ignored folder or minified. */
+  /** JS/TS files skipped because they're vendored, built, minified or generated. */
   ignoredCount: number;
+  /** The same files, by reason. */
+  skippedByReason: Record<SkipReason, number>;
+  /** The first MAX_SKIPPED_SAMPLE skipped paths, for "why were files skipped?". */
+  skippedSample: SkippedFile[];
 }
+
+export type SkipReason = 'folder' | 'minified' | 'generated';
+
+export interface SkippedFile {
+  path: string;
+  reason: SkipReason;
+}
+
+export const MAX_SKIPPED_SAMPLE = 50;
 
 const ignoredDirs = new Set<string>(IGNORED_DIRS);
 const TEST_DIRS = new Set(['__tests__', '__mocks__', 'test', 'tests']);
@@ -60,16 +89,22 @@ function hasSupportedExtension(path: string): boolean {
   return SUPPORTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
 }
 
-function isIgnored(path: string): boolean {
+/** Why a JS/TS path is skipped, or null when it should be analysed. */
+export function skipReason(path: string): SkipReason | null {
   const parts = path.split('/');
-  const dirs = parts.slice(0, -1);
-  if (dirs.some((d) => ignoredDirs.has(d))) return true;
-  return parts[parts.length - 1].toLowerCase().endsWith('.min.js');
+  if (parts.slice(0, -1).some((d) => ignoredDirs.has(d))) return 'folder';
+  const name = parts[parts.length - 1].toLowerCase();
+  if (/\.min\.[cm]?js$/.test(name)) return 'minified';
+  if (/\.(generated|gen)\.[cm]?[jt]sx?$/.test(name) || /\.(bundle|chunk)\.[cm]?js$/.test(name)) {
+    return 'generated';
+  }
+  return null;
 }
 
 export function filterTree(entries: TreeEntry[]): TreeSummary {
   let totalFiles = 0;
-  let ignoredCount = 0;
+  const skippedByReason: Record<SkipReason, number> = { folder: 0, minified: 0, generated: 0 };
+  const skippedSample: SkippedFile[] = [];
   const sourceFiles: SourceFile[] = [];
 
   for (const entry of entries) {
@@ -77,8 +112,10 @@ export function filterTree(entries: TreeEntry[]): TreeSummary {
     if (entry.type !== 'blob' || entry.mode === '120000') continue;
     totalFiles++;
     if (!hasSupportedExtension(entry.path)) continue;
-    if (isIgnored(entry.path)) {
-      ignoredCount++;
+    const reason = skipReason(entry.path);
+    if (reason) {
+      skippedByReason[reason]++;
+      if (skippedSample.length < MAX_SKIPPED_SAMPLE) skippedSample.push({ path: entry.path, reason });
       continue;
     }
     const size = entry.size ?? 0;
@@ -97,7 +134,9 @@ export function filterTree(entries: TreeEntry[]): TreeSummary {
     totalFiles,
     sourceFiles,
     tooLargeCount: sourceFiles.filter((f) => f.tooLarge).length,
-    ignoredCount,
+    ignoredCount: skippedByReason.folder + skippedByReason.minified + skippedByReason.generated,
+    skippedByReason,
+    skippedSample,
   };
 }
 
