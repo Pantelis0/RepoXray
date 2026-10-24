@@ -42,6 +42,31 @@ Pin each fixture to the commit below so results don't drift. Bump the commit del
 - 3 `@/` alias imports, which must be **ignored** (v1 does not resolve aliases) and must not crash anything.
 - Large enough to surface rate-limit behaviour on `raw.githubusercontent.com` (see [GITHUB_LIMITS.md](GITHUB_LIMITS.md)).
 
+## Inventory check against GitHub (D06, 24 Oct 2026)
+
+Each repo's real file list came from `git ls-tree -r` on a fresh clone at the commit shown. A separate script that doesn't import any RepoXray code applied the README filter rules to that list. Then the same list went through the app: `filterTree` directly, and the Files panel in a browser with every toggle on and every page loaded.
+
+| Repo           | Why                            | Commit    | GitHub files | JS/TS | Skipped (vendor/build) | Kept  | Source / test / types | Folders | Result                   |
+| -------------- | ------------------------------ | --------- | ------------ | ----- | ---------------------- | ----- | --------------------- | ------- | ------------------------ |
+| chalk/chalk    | Normal, small                  | `7211001` | 35           | 20    | 6 (`source/vendor/`)   | 14    | 5 / 8 / 1             | 3       | Same paths, counts match |
+| pmndrs/zustand | Nested (`examples/demo/src/…`) | `382d29c` | 144          | 51    | 0                      | 51    | 34 / 15 / 2           | 15      | Same paths, counts match |
+| honojs/hono    | Nested, mid-size               | `5ca49b0` | 583          | 458   | 6 (`build/`)           | 452   | 288 / 162 / 2         | 121     | Same paths, counts match |
+| vitejs/vite    | Many files                     | `82e7aa0` | 2,909        | 1,633 | 10                     | 1,623 | 1,176 / 415 / 32      | 742     | Same paths, counts match |
+
+What was checked, per repo:
+
+- **Same file list.** The kept paths are identical to the independent script's list, not just the same count.
+- **Folder counts.** Every folder's count matches, all 742 of them in vite, down to `packages/vite/src/node/ssr/runtime/__tests__/fixtures/cyclic2/test7/dom` (2 files).
+- **Total files.** The total equals GitHub's file count.
+- **In the browser.** Exactly 2 API calls. The first page is capped at 500 rows, and "Show more" reaches all 1,623 vite files.
+- **Same tree either way.** For hono, the API tree (fixture) and the git listing at the same commit have identical paths and sizes.
+
+**Bug found and fixed.** vite has 5 symlinks. They were left out of the total, so the header said 2,904 files while GitHub says 2,909. Symlinks now count towards the total, matching GitHub, but they're still never analysed.
+
+**Not covered by these repos:** none of the four has a JS/TS file over 500 KB, so the "too large" path is covered only by unit and UI tests.
+
+**Finding for later:** 1,110 of vite's 1,623 kept files are in `playground/`. They're example apps rather than library source, so `examples/` and `playground/` probably deserve their own hidden-by-default role, like tests.
+
 ## Expected-result checklist (fill in once the parser exists)
 
 | Fixture | Nodes | Edges | Unresolved    | Parse errors | Time to graph |
@@ -49,6 +74,10 @@ Pin each fixture to the commit below so results don't drift. Bump the commit del
 | chalk   | 14    | _tbd_ | _tbd_         | 0            | _tbd_         |
 | zustand | 51    | _tbd_ | _tbd_         | 0            | _tbd_         |
 | hono    | 452   | _tbd_ | ≥ 3 (aliases) | 0            | < 10 s        |
+
+## Many-files fixture
+
+`vitejs/vite` at `82e7aa0` (2,909 files, 1,623 JS/TS) is stored as `src/lib/__fixtures__/trees/vite.json` (paths, modes and sizes only). It exercises the 500-row paging and is the closest real repo to the 2,000-file limit.
 
 ## Backup candidates
 
