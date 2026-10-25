@@ -13,6 +13,7 @@ import {
   type RepoMeta,
 } from './lib/github';
 import { formatRepoRef, type RepoRef } from './lib/parseRepoUrl';
+import { graphFromSummary } from './lib/repoGraph';
 import { sampleGraph } from './lib/sampleGraph';
 
 type CheckStatus =
@@ -34,9 +35,21 @@ type CheckStatus =
 const isBusy = (s: CheckStatus) => s.kind === 'checking' || s.kind === 'reading-tree';
 
 export default function App() {
-  const graph = sampleGraph;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [status, setStatus] = useState<CheckStatus>({ kind: 'idle' });
+  // A real repo replaces the sample as soon as its file list is ready.
+  const real = status.kind === 'ready' && status.summary.sourceFiles.some((f) => f.role === 'source');
+  const graph = useMemo(
+    () =>
+      status.kind === 'ready' && real
+        ? graphFromSummary(status.meta, status.branch, status.summary)
+        : sampleGraph,
+    [status, real],
+  );
+  const folderCount = useMemo(
+    () => new Set(graph.nodes.map((n) => n.id.slice(0, Math.max(0, n.id.lastIndexOf('/'))))).size,
+    [graph],
+  );
   const inFlight = useRef<AbortController | null>(null);
 
   useEffect(() => () => inFlight.current?.abort(), []);
@@ -55,6 +68,7 @@ export default function App() {
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
+    setSelectedId(null);
     setStatus({ kind: 'checking', ref });
     // One budget per analysis: a bug can never spend more than this many of the
     // visitor's 60 unauthenticated calls an hour.
@@ -125,7 +139,10 @@ export default function App() {
         <UrlForm
           busy={isBusy(status)}
           onAnalyse={handleAnalyse}
-          onEdit={() => setStatus((s) => (isBusy(s) ? s : { kind: 'idle' }))}
+          onEdit={() => {
+            setStatus((s) => (isBusy(s) ? s : { kind: 'idle' }));
+            setSelectedId(null);
+          }}
         />
         <RepoStatus status={status} />
         <p className="hero__waitlist">
@@ -146,26 +163,55 @@ export default function App() {
 
       <section className="canvas-card" aria-label="Import graph">
         <div className="canvas-card__bar">
-          <div>
-            <strong>Sample graph</strong>
-            <span className="muted"> · RepoXray’s own planned file structure (hand-written data)</span>
-          </div>
+          {real ? (
+            <div>
+              <strong>
+                {graph.repo.owner}/{graph.repo.name}
+              </strong>
+              <span className="muted">
+                {' '}
+                · {graph.nodes.length.toLocaleString('en')} source files in {folderCount.toLocaleString('en')}{' '}
+                {folderCount === 1 ? 'folder' : 'folders'} ·{' '}
+              </span>
+              <span className="canvas-card__pending">import edges coming next</span>
+            </div>
+          ) : (
+            <div>
+              <strong>Sample graph</strong>
+              <span className="muted"> · RepoXray’s own planned file structure (hand-written data)</span>
+            </div>
+          )}
           <ul className="legend" aria-label="Folder colours">
-            {Object.entries(colors).map(([folder, color]) => (
-              <li key={folder}>
-                <span className="legend__swatch" style={{ background: color }} aria-hidden="true" />
-                {folder || '(root)'}
-              </li>
-            ))}
+            {Object.entries(colors)
+              .slice(0, 8)
+              .map(([folder, color]) => (
+                <li key={folder}>
+                  <span className="legend__swatch" style={{ background: color }} aria-hidden="true" />
+                  {folder || '(root)'}
+                </li>
+              ))}
+            {Object.keys(colors).length > 8 && (
+              <li className="muted">+{Object.keys(colors).length - 8} more</li>
+            )}
           </ul>
         </div>
 
         <div className="canvas">
-          <GraphView graph={graph} selectedId={selectedId} onSelect={setSelectedId} />
+          <GraphView
+            graph={graph}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            layout={real ? 'folders' : 'force'}
+          />
         </div>
 
         <div className="canvas-card__foot" aria-live="polite">
-          {selectedId && selection ? (
+          {selectedId && selection && real ? (
+            <>
+              <code>{selectedId}</code>
+              <span className="muted">Imports for this file are analysed in the next step.</span>
+            </>
+          ) : selectedId && selection ? (
             <>
               <code>{selectedId}</code>
               <span>
@@ -178,7 +224,9 @@ export default function App() {
             </>
           ) : (
             <span className="muted">
-              Click a file to see what it imports and what imports it. Drag to rearrange, scroll to zoom.
+              {real
+                ? 'Each box is a folder. Drag to pan, scroll to zoom, click a file to select it.'
+                : 'Click a file to see what it imports and what imports it. Drag to rearrange, scroll to zoom.'}
             </span>
           )}
         </div>

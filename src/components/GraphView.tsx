@@ -10,17 +10,26 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useCallback, useMemo, useState } from 'react';
 import { folderColors } from '../lib/folderColors';
+import { layoutByFolder } from '../lib/folderLayout';
 import { layoutGraph } from '../lib/layout';
 import type { RepoGraph } from '../lib/types';
 import { FileNode, type FileNodeType, type NodeTone } from './FileNode';
+import { FolderNode, type FolderNodeType } from './FolderNode';
 
-const nodeTypes = { file: FileNode };
+const nodeTypes = { file: FileNode, folder: FolderNode };
+
+type CanvasNode = FileNodeType | FolderNodeType;
 
 export interface GraphViewProps {
   graph: RepoGraph;
   /** Path of the selected file, or null for no selection. */
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /**
+   * `force` spreads files by their imports (needs edges). `folders` groups
+   * files into one box per directory, which works before edges exist.
+   */
+  layout?: 'force' | 'folders';
 }
 
 /**
@@ -33,27 +42,56 @@ export function GraphView(props: GraphViewProps) {
   return <GraphCanvas key={`${repo.htmlUrl}@${repo.ref}`} {...props} />;
 }
 
-function GraphCanvas({ graph, selectedId, onSelect }: GraphViewProps) {
+function GraphCanvas({ graph, selectedId, onSelect, layout = 'force' }: GraphViewProps) {
   const colors = useMemo(() => folderColors(graph.nodes.map((n) => n.folder)), [graph]);
 
   // Layout once per graph; after that, positions only change when the user drags.
-  const [nodes, setNodes] = useState<FileNodeType[]>(() => {
+  const [nodes, setNodes] = useState<CanvasNode[]>(() => {
+    const fileData = (n: RepoGraph['nodes'][number]) => ({
+      name: n.id.split('/').pop() ?? n.id,
+      path: n.id,
+      color: colors[n.folder],
+      tone: 'normal' as NodeTone,
+      tooLarge: n.status === 'too-large',
+    });
+
+    if (layout === 'folders') {
+      const { boxes, files } = layoutByFolder(graph.nodes);
+      // React Flow needs every parent before its children.
+      const folders: FolderNodeType[] = boxes.map((b) => ({
+        id: `dir:${b.path}`,
+        type: 'folder',
+        position: { x: b.x, y: b.y },
+        data: {
+          path: b.path,
+          fileCount: b.fileCount,
+          color: colors[b.topFolder],
+          width: b.width,
+          height: b.height,
+        },
+        style: { width: b.width, height: b.height },
+        selectable: false,
+        draggable: true,
+        zIndex: 0,
+      }));
+      const fileNodes: FileNodeType[] = graph.nodes.map((n) => ({
+        id: n.id,
+        type: 'file',
+        parentId: `dir:${files[n.id].folder}`,
+        extent: 'parent',
+        position: { x: files[n.id].x, y: files[n.id].y },
+        data: { ...fileData(n), compact: true },
+        zIndex: 1,
+      }));
+      return [...folders, ...fileNodes];
+    }
+
     const positions = layoutGraph(graph);
-    return graph.nodes.map((n) => ({
-      id: n.id,
-      type: 'file',
-      position: positions[n.id],
-      data: {
-        name: n.id.split('/').pop() ?? n.id,
-        path: n.id,
-        color: colors[n.folder],
-        tone: 'normal',
-      },
-    }));
+    return graph.nodes.map((n) => ({ id: n.id, type: 'file', position: positions[n.id], data: fileData(n) }));
   });
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<FileNodeType>[]) => setNodes((ns) => applyNodeChanges(changes, ns)),
+    (changes: NodeChange<CanvasNode>[]) => setNodes((ns) => applyNodeChanges(changes, ns)),
     [],
   );
 
@@ -82,7 +120,10 @@ function GraphCanvas({ graph, selectedId, onSelect }: GraphViewProps) {
   );
 
   const displayNodes = useMemo(
-    () => nodes.map((n) => ({ ...n, data: { ...n.data, tone: toneOf(n.id) } })),
+    () =>
+      nodes.map((n) =>
+        n.type === 'file' ? ({ ...n, data: { ...n.data, tone: toneOf(n.id) } } as FileNodeType) : n,
+      ),
     [nodes, toneOf],
   );
 
@@ -109,9 +150,11 @@ function GraphCanvas({ graph, selectedId, onSelect }: GraphViewProps) {
       nodes={displayNodes}
       edges={edges}
       nodeTypes={nodeTypes}
-      nodeOrigin={[0.5, 0.5]}
+      nodeOrigin={layout === 'folders' ? [0, 0] : [0.5, 0.5]}
       onNodesChange={onNodesChange}
-      onNodeClick={(_, node) => onSelect(node.id)}
+      onNodeClick={(_, node) => {
+        if (node.type === 'file') onSelect(node.id);
+      }}
       onPaneClick={() => onSelect(null)}
       nodesConnectable={false}
       edgesFocusable={false}
@@ -128,6 +171,7 @@ function GraphCanvas({ graph, selectedId, onSelect }: GraphViewProps) {
         pannable
         zoomable
         nodeColor={(n) => (n.data as { color: string }).color}
+        nodeStrokeWidth={layout === 'folders' ? 0 : 2}
         maskColor="rgba(11, 15, 20, 0.7)"
       />
     </ReactFlow>
