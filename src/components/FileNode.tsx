@@ -9,6 +9,9 @@ export type FileNodeData = {
   path: string;
   color: string;
   tone: NodeTone;
+  /** Fixed-width variant used inside folder boxes. */
+  compact?: boolean;
+  tooLarge?: boolean;
 };
 
 export type FileNodeType = Node<FileNodeData, 'file'>;
@@ -25,7 +28,7 @@ const centreHandle = {
 function FileNodeComponent({ data }: NodeProps<FileNodeType>) {
   return (
     <div
-      className={`file-node tone-${data.tone}`}
+      className={`file-node tone-${data.tone}${data.compact ? ' file-node--compact' : ''}${data.tooLarge ? ' file-node--large' : ''}`}
       style={{ '--folder-color': data.color } as CSSProperties}
       title={data.path}
     >

@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import realTree from './lib/__fixtures__/repoxray-tree.json';
 
 // React Flow needs real layout APIs; the canvas isn't what's under test here.
-vi.mock('./components/GraphView', () => ({ GraphView: () => <div data-testid="graph" /> }));
+vi.mock('./components/GraphView', () => ({
+  GraphView: (p: { graph: { nodes: unknown[]; repo: { name: string } }; layout?: string }) => (
+    <div data-testid="graph" data-layout={p.layout ?? 'force'} data-nodes={p.graph.nodes.length}>
+      {p.graph.repo.name}
+    </div>
+  ),
+}));
 
 import App from './App';
 
@@ -170,6 +176,18 @@ describe('App repo analysis', () => {
     await analyse('facebook/react');
     await screen.findByText(/File list ready/);
     expect(screen.queryByText(/Analysis incomplete/)).toBeNull();
+  });
+
+  it('swaps the sample graph for the real repo, grouped by folder', async () => {
+    expect(render(<App />).getByTestId('graph').dataset.layout).toBe('force');
+    cleanup();
+    routes({ '/git/trees/': () => json(200, realTree), '/repos/': () => json(200, reactMeta) });
+    await analyse('facebook/react');
+    await screen.findByText(/import edges coming next/);
+    const graph = screen.getByTestId('graph');
+    expect(graph.dataset.layout).toBe('folders');
+    expect(Number(graph.dataset.nodes)).toBeGreaterThan(0);
+    expect(graph.textContent).toBe('react');
   });
 
   it('shows "not found or not public" for a 404 and never asks for the tree', async () => {
