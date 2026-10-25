@@ -6,6 +6,31 @@
 
 **[→ Join the waitlist](https://tally.so/r/1WAKM4)** for early access when v1 ships · follow the build on [X @pntlsk](https://x.com/pntlsk)
 
+![RepoXray at the end of week 1: paste honojs/hono, see its real file inventory and every source file grouped by folder](docs/media/demo-week1.gif)
+
+## Where it is now (end of week 1, 25 Oct)
+
+**Works today**
+
+- **Paste any public GitHub URL.** Shorthand, issue links and `/tree/<branch>` links all work. Wrong hosts, gists and profiles get a clear message.
+- **Reads the repo with exactly 2 GitHub API calls and no token.** That's the repo details plus the full file tree. Renamed repos are followed (e.g. `facebook/react` → `react/react`).
+- **Clear errors.** Not found, private, empty, missing branch, too large, rate limited (with the reset time), offline and timeout each get their own message.
+- **File inventory.**
+  - Keeps the 8 JS/TS extensions.
+  - Skips vendored, build and generated code, and says how many files it skipped.
+  - Tags tests, stories and `.d.ts` files, and hides them by default.
+  - Flags files over 500 KB.
+  - Has a folder tree with counts and a path filter, and shows 500 rows at a time.
+- **Canvas shows the repo's real source files**, one box per folder, with pan, zoom and fit view. It handles vite's 1,176 files in about 2.5 s.
+- **Checked against real repos.** The inventory matches GitHub's own file lists for chalk, zustand, hono and vite. See [docs/TEST_FIXTURES.md](docs/TEST_FIXTURES.md).
+
+**Not yet**
+
+- **Import edges.** Files aren't parsed yet, so there are no arrows between them. This is next, in week 2.
+- **Search and "what imports this file?"** These need the edges.
+- **`tsconfig` path aliases (`@/…`).** See [#17](https://github.com/Pantelis0/RepoXray/issues/17).
+- **A hosted version.** For now you run it locally (below).
+
 ---
 
 ## What it does (v1)
@@ -190,18 +215,19 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Right now the home screen shows a **sample graph** (hand-written data of RepoXray's own planned structure). Pasting a URL doesn't fetch anything yet; that arrives with issues #2–#8.
+Paste a public repo URL (try `honojs/hono`) to load its real file list and folder view. Before you paste anything, the canvas shows a hand-written **sample graph** of RepoXray's planned structure, so you can see what the import view will look like.
 
-| Script                            | What it does                            |
-| --------------------------------- | --------------------------------------- |
-| `npm run dev`                     | Start the dev server with hot reload    |
-| `npm run build`                   | Typecheck and build to `dist/`          |
-| `npm run preview`                 | Serve the production build locally      |
-| `npm run typecheck`               | TypeScript only                         |
-| `npm run lint`                    | Lint with oxlint                        |
-| `npm run format` / `format:check` | Format with Prettier / check formatting |
-| `npm test`                        | Run unit tests once (Vitest)            |
-| `npm run check`                   | Everything CI runs except the build     |
+| Script                            | What it does                                          |
+| --------------------------------- | ----------------------------------------------------- |
+| `npm run dev`                     | Start the dev server with hot reload                  |
+| `npm run build`                   | Typecheck and build to `dist/`                        |
+| `npm run preview`                 | Serve the production build locally                    |
+| `npm run typecheck`               | TypeScript only                                       |
+| `npm run lint`                    | Lint with oxlint                                      |
+| `npm run format` / `format:check` | Format with Prettier / check formatting               |
+| `npm test`                        | Run unit tests once (Vitest)                          |
+| `npm run check`                   | Everything CI runs except the build                   |
+| `npm run check:secrets`           | Fail if anything token-like is in the code or `dist/` |
 
 CI runs typecheck, lint, format check, tests and build on every push and pull request.
 
@@ -223,4 +249,4 @@ Issues and PRs welcome — please check the scope above first so v1 stays focuse
 
 ## Licence
 
-MIT
+[MIT](LICENSE) © 2026 Pantelis Kefalas
